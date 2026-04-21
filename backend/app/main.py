@@ -11,12 +11,10 @@ from app.state_updater import StateUpdater
 from app.aggregation_engine import AggregationEngine
 from app.ws_spot_manager import WSSpotManager
 from app.ws_futures_manager import WSFuturesManager
+from app.history_manager import HistoryManager
 
 logging.basicConfig(level=logging.INFO)
 
-# CRITICAL: Initialize Database at the module level.
-# When running as 'uvicorn app.main:app', the __main__ block is skipped.
-# This ensures init_db() runs before the FastAPI app is even created.
 print("\n" + "="*40)
 print("VENOMTRADEBOT: BOOTING SYSTEM...")
 print("="*40)
@@ -39,7 +37,7 @@ app.add_middleware(
 @app.get("/")
 @app.get("/api/health")
 async def health():
-    return {"status": "ONLINE", "version": "1.0.0"}
+    return {"status": "ONLINE", "version": "1.1.0"}
 
 app.include_router(router, prefix="/api")
 app.mount("/", sio_app)
@@ -47,12 +45,20 @@ app.mount("/", sio_app)
 async def startup_logic():
     try:
         await redis_client.connect()
-        print("VENOMTRADEBOT: Starting Confluence Engine...")
+        
         su = StateUpdater(sio)
         ae = AggregationEngine(su)
+        hm = HistoryManager(ae)
+        
+        # Prefill history to calculate indicators immediately
+        hm.prefill_all()
+        
+        print("VENOMTRADEBOT: Starting Confluence Engine...")
         print(f"VENOMTRADEBOT: Tracking {len(PAIRS)} Trading Pairs.")
+        
         asyncio.create_task(WSSpotManager(ae).start())
         asyncio.create_task(WSFuturesManager().start())
+        
         print("\n" + "="*40 + "\nVENOMTRADEBOT: ALL SYSTEMS ONLINE!\n" + "="*40 + "\n")
     except Exception as e:
         print(f"CRITICAL ERROR IN BACKGROUND SERVICES: {e}")
@@ -67,6 +73,5 @@ async def shutdown_event():
     await redis_client.disconnect()
 
 if __name__ == "__main__":
-    # Local dev run
     import uvicorn
     uvicorn.run(app, host=HOST, port=PORT)
