@@ -13,6 +13,19 @@ from app.ws_spot_manager import WSSpotManager
 from app.ws_futures_manager import WSFuturesManager
 
 logging.basicConfig(level=logging.INFO)
+
+# CRITICAL: Initialize Database at the module level.
+# When running as 'uvicorn app.main:app', the __main__ block is skipped.
+# This ensures init_db() runs before the FastAPI app is even created.
+print("\n" + "="*40)
+print("VENOMTRADEBOT: BOOTING SYSTEM...")
+print("="*40)
+try:
+    init_db()
+except Exception as e:
+    print(f"FATAL: Database failed to initialize: {e}")
+    os._exit(1)
+
 app = FastAPI(title="VENOMTRADEBOT Backend")
 
 app.add_middleware(
@@ -23,10 +36,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Root route for health checking
 @app.get("/")
-async def root():
-    return {"status": "ONLINE", "service": "VENOMTRADEBOT Core"}
+@app.get("/api/health")
+async def health():
+    return {"status": "ONLINE", "version": "1.0.0"}
 
 app.include_router(router, prefix="/api")
 app.mount("/", sio_app)
@@ -47,10 +60,6 @@ async def startup_logic():
 
 @app.on_event("startup")
 async def startup_event():
-    # Run sync DB initialization during startup. 
-    # This blocks uvicorn from accepting requests until DB is ready.
-    print("VENOMTRADEBOT: INITIALIZING DATABASE...")
-    init_db()
     asyncio.create_task(startup_logic())
 
 @app.on_event("shutdown")
@@ -58,6 +67,6 @@ async def shutdown_event():
     await redis_client.disconnect()
 
 if __name__ == "__main__":
-    # Fallback for manual run
+    # Local dev run
     import uvicorn
     uvicorn.run(app, host=HOST, port=PORT)
