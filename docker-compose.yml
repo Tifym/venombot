@@ -19,7 +19,6 @@ services:
 
   backend:
     build: ./backend
-    env_file: .env
     environment:
       - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-venombot123}@timescaledb:5432/venombot
       - REDIS_URL=redis://redis:6379
