@@ -9,6 +9,16 @@ execution = ExecutionManager()
 @router.get("/health")
 async def health(): return {"status": "ok"}
 
+@router.get("/klines")
+async def get_klines(pair: str, timeframe: str, limit: int = 100):
+    conn = get_connection()
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM klines WHERE pair = %s AND timeframe = %s ORDER BY time DESC LIMIT %s", (pair, timeframe, limit))
+        cols = [desc[0] for desc in cur.description]
+        rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    conn.close()
+    return rows
+
 @router.get("/signals")
 async def get_signals(status: str = 'pending'):
     conn = get_connection()
