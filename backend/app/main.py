@@ -1,4 +1,5 @@
-import asyncio, logging, uvicorn, os
+import asyncio, logging, os
+import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import HOST, PORT, PAIRS
@@ -12,7 +13,7 @@ from app.ws_spot_manager import WSSpotManager
 from app.ws_futures_manager import WSFuturesManager
 
 logging.basicConfig(level=logging.INFO)
-app = FastAPI()
+app = FastAPI(title="VENOMTRADEBOT Backend")
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,34 +23,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Root route for health checking
+@app.get("/")
+async def root():
+    return {"status": "ONLINE", "service": "VENOMTRADEBOT Core"}
+
 app.include_router(router, prefix="/api")
 app.mount("/", sio_app)
 
 async def startup_logic():
     try:
-        # 1. Connect to Redis (Async)
         await redis_client.connect()
-        
-        # 2. Start Confluence Engine
         print("VENOMTRADEBOT: Starting Confluence Engine...")
         su = StateUpdater(sio)
         ae = AggregationEngine(su)
-        
-        # 3. Start Websocket Workers
-        print(f"VENOMTRADEBOT: Connected to {len(PAIRS)} Trading Pairs.")
+        print(f"VENOMTRADEBOT: Tracking {len(PAIRS)} Trading Pairs.")
         asyncio.create_task(WSSpotManager(ae).start())
         asyncio.create_task(WSFuturesManager().start())
-        
-        print("\n" + "="*40)
-        print("VENOMTRADEBOT: ALL SYSTEMS GO!")
-        print("="*40 + "\n")
+        print("\n" + "="*40 + "\nVENOMTRADEBOT: ALL SYSTEMS ONLINE!\n" + "="*40 + "\n")
     except Exception as e:
         print(f"CRITICAL ERROR IN BACKGROUND SERVICES: {e}")
         os._exit(1)
 
 @app.on_event("startup")
 async def startup_event():
-    # Only run pure async tasks here
+    # Run sync DB initialization during startup. 
+    # This blocks uvicorn from accepting requests until DB is ready.
+    print("VENOMTRADEBOT: INITIALIZING DATABASE...")
+    init_db()
     asyncio.create_task(startup_logic())
 
 @app.on_event("shutdown")
@@ -57,17 +58,6 @@ async def shutdown_event():
     await redis_client.disconnect()
 
 if __name__ == "__main__":
-    # CRITICAL: Run synchronous database initialization BEFORE starting Uvicorn.
-    # This prevents blocking the async event loop during retries.
-    print("\n" + "="*40)
-    print("VENOMTRADEBOT: BOOTING SYSTEM...")
-    print("="*40)
-    
-    try:
-        init_db()
-    except Exception as e:
-        print(f"FATAL: Database failed to initialize: {e}")
-        os._exit(1)
-        
-    # Start the server
-    uvicorn.run(app, host=HOST, port=PORT, log_level="info")
+    # Fallback for manual run
+    import uvicorn
+    uvicorn.run(app, host=HOST, port=PORT)
