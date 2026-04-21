@@ -26,14 +26,29 @@ app.include_router(router, prefix="/api")
 app.mount("/", sio_app)
 
 async def startup_logic():
-    print("VENOMTRADEBOT: INITIALIZING SERVICES...")
-    init_db()
-    await redis_client.connect()
-    su = StateUpdater(sio)
-    ae = AggregationEngine(su)
-    asyncio.create_task(WSSpotManager(ae).start())
-    asyncio.create_task(WSFuturesManager().start())
-    print("VENOMTRADEBOT: ONLINE.")
+    try:
+        print("\n" + "="*40)
+        print("VENOMTRADEBOT: INITIALIZING SERVICES...")
+        print("="*40)
+        
+        init_db()
+        await redis_client.connect()
+        
+        print("VENOMTRADEBOT: Starting Confluence Engine...")
+        su = StateUpdater(sio)
+        ae = AggregationEngine(su)
+        
+        print(f"VENOMTRADEBOT: Connected to {len(PAIRS)} Trading Pairs.")
+        asyncio.create_task(WSSpotManager(ae).start())
+        asyncio.create_task(WSFuturesManager().start())
+        
+        print("="*40)
+        print("VENOMTRADEBOT: ALL SYSTEMS GO!")
+        print("="*40 + "\n")
+    except Exception as e:
+        print(f"CRITICAL ERROR DURING STARTUP: {e}")
+        import os
+        os._exit(1) # Force container exit on fatal startup failure
 
 @app.on_event("startup")
 async def startup_event():

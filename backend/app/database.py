@@ -134,16 +134,24 @@ CREATE INDEX IF NOT EXISTS idx_liquidations_pair_time ON liquidations(pair, time
 """
 
 def init_db():
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-        with conn.cursor() as cur:
-            cur.execute(SCHEMA_SQL)
-        conn.close()
-        logger.info("Database initialized successfully.")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
+    retries = 10
+    while retries > 0:
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+            with conn.cursor() as cur:
+                cur.execute(SCHEMA_SQL)
+            conn.close()
+            logger.info("VENOMTRADEBOT: Database initialized successfully.")
+            return
+        except Exception as e:
+            retries -= 1
+            logger.warning(f"VENOMTRADEBOT: Database not ready... ({10-retries}/10). Retrying in 5s...")
+            import time
+            time.sleep(5)
+    
+    logger.error("VENOMTRADEBOT: Could not connect to database after 10 attempts.")
+    raise Exception("Database connection failed")
 
 def get_connection():
     return psycopg2.connect(DATABASE_URL)

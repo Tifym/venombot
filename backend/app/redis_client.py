@@ -3,7 +3,20 @@ from app.config import REDIS_URL
 
 class RedisClient:
     def __init__(self): self.client = None
-    async def connect(self): self.client = await redis.from_url(REDIS_URL, decode_responses=True)
+    async def connect(self):
+        retries = 10
+        while retries > 0:
+            try:
+                self.client = await redis.from_url(REDIS_URL, decode_responses=True)
+                await self.client.ping()
+                print("VENOMTRADEBOT: Redis connected successfully.")
+                return
+            except Exception as e:
+                retries -= 1
+                print(f"VENOMTRADEBOT: Redis not ready... ({10-retries}/10). Retrying in 5s...")
+                import asyncio
+                await asyncio.sleep(5)
+        raise Exception("Redis connection failed")
     async def disconnect(self):
         if self.client: await self.client.close()
     async def push_liquidation(self, pair, side, price, qty, usd_value):
