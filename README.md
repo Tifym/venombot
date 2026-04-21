@@ -4,4 +4,4 @@ Real-time confluence dashboard.
 1. `docker-compose up -d --build`
 2. Visit:
    - Frontend: `http://localhost:8080`
-   - Grafana: `http://localhost:3000`
+   - Grafana: `http://localhost:4000`
