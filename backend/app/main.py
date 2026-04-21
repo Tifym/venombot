@@ -1,7 +1,7 @@
-import asyncio, logging, uvicorn
+import asyncio, logging, uvicorn, os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.config import HOST, PORT
+from app.config import HOST, PORT, PAIRS
 from app.database import init_db
 from app.redis_client import redis_client
 from app.api.routes import router
@@ -27,31 +27,29 @@ app.mount("/", sio_app)
 
 async def startup_logic():
     try:
-        print("\n" + "="*40)
-        print("VENOMTRADEBOT: INITIALIZING SERVICES...")
-        print("="*40)
-        
-        init_db()
+        # 1. Connect to Redis (Async)
         await redis_client.connect()
         
+        # 2. Start Confluence Engine
         print("VENOMTRADEBOT: Starting Confluence Engine...")
         su = StateUpdater(sio)
         ae = AggregationEngine(su)
         
+        # 3. Start Websocket Workers
         print(f"VENOMTRADEBOT: Connected to {len(PAIRS)} Trading Pairs.")
         asyncio.create_task(WSSpotManager(ae).start())
         asyncio.create_task(WSFuturesManager().start())
         
-        print("="*40)
+        print("\n" + "="*40)
         print("VENOMTRADEBOT: ALL SYSTEMS GO!")
         print("="*40 + "\n")
     except Exception as e:
-        print(f"CRITICAL ERROR DURING STARTUP: {e}")
-        import os
-        os._exit(1) # Force container exit on fatal startup failure
+        print(f"CRITICAL ERROR IN BACKGROUND SERVICES: {e}")
+        os._exit(1)
 
 @app.on_event("startup")
 async def startup_event():
+    # Only run pure async tasks here
     asyncio.create_task(startup_logic())
 
 @app.on_event("shutdown")
@@ -59,4 +57,17 @@ async def shutdown_event():
     await redis_client.disconnect()
 
 if __name__ == "__main__":
-    uvicorn.run(app, host=HOST, port=PORT)
+    # CRITICAL: Run synchronous database initialization BEFORE starting Uvicorn.
+    # This prevents blocking the async event loop during retries.
+    print("\n" + "="*40)
+    print("VENOMTRADEBOT: BOOTING SYSTEM...")
+    print("="*40)
+    
+    try:
+        init_db()
+    except Exception as e:
+        print(f"FATAL: Database failed to initialize: {e}")
+        os._exit(1)
+        
+    # Start the server
+    uvicorn.run(app, host=HOST, port=PORT, log_level="info")
