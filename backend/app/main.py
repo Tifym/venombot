@@ -13,19 +13,41 @@ from app.ws_futures_manager import WSFuturesManager
 
 logging.basicConfig(level=logging.INFO)
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+# Enable CORS for internal and external testing
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(router, prefix="/api")
-app.mount("/", sio_app)
+
+# Wrap FastAPI with Socket.IO ASGI app
+combined_app = sio_app
+sio_app.other_asgi_app = app
 
 async def startup():
-    init_db(); await redis_client.connect()
-    su = StateUpdater(sio); ae = AggregationEngine(su)
+    print("VENOMTRADEBOT: Starting database and services...")
+    init_db()
+    await redis_client.connect()
+    
+    su = StateUpdater(sio)
+    ae = AggregationEngine(su)
+    
     asyncio.create_task(WSSpotManager(ae).start())
     asyncio.create_task(WSFuturesManager().start())
+    print("VENOMTRADEBOT: Services are hot!")
 
 @app.on_event("startup")
-async def s(): asyncio.create_task(startup())
-@app.on_event("shutdown")
-async def h(): await redis_client.disconnect()
+async def s():
+    asyncio.create_task(startup())
 
-if __name__ == "__main__": uvicorn.run(app, host=HOST, port=PORT)
+@app.on_event("shutdown")
+async def h():
+    await redis_client.disconnect()
+
+if __name__ == "__main__":
+    uvicorn.run(combined_app, host=HOST, port=PORT)
